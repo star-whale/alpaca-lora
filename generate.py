@@ -22,6 +22,9 @@ try:
 except:  # noqa: E722
     pass
 
+prompter = None
+tokenizer = None
+model = None
 
 def main(
     load_8bit: bool = True,
@@ -54,7 +57,7 @@ def main(
         print()
     """
 
-def init_model(load_8bit, base_model, lora_weights, prompt_template):
+def init_model(base_model, lora_weights,load_8bit=True, prompt_template=""):
     base_model = base_model or os.environ.get("BASE_MODEL", "")
     assert (
         base_model
@@ -162,6 +165,9 @@ def evaluate(
     stream_output=False,
     **kwargs,
 ):
+    global prompter
+    global tokenizer
+    global model
     prompt = prompter.generate_prompt(instruction, input)
     inputs = tokenizer(prompt, return_tensors="pt")
     input_ids = inputs["input_ids"].to(device)
