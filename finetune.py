@@ -1,11 +1,11 @@
 import os
 import sys
-from typing import List
+from typing import List, Any
 
 import fire
 import torch
 import transformers
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 
 """
 Unused imports:
@@ -23,12 +23,13 @@ from peft import (
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
 from utils.prompter import Prompter
-
+from starwhale import dataset
 
 def train(
     # model/data params
+    sw_train_dataset: dataset,
+    sw_eval_dataset: dataset = None,
     base_model: str = "",  # the only required argument
-    data_path: str = "yahma/alpaca-cleaned",
     output_dir: str = "./lora-alpaca",
     # training hyperparams
     batch_size: int = 128,
@@ -36,7 +37,7 @@ def train(
     num_epochs: int = 3,
     learning_rate: float = 3e-4,
     cutoff_len: int = 256,
-    val_set_size: int = 2000,
+    val_set_size: float = 0.1,
     # lora hyperparams
     lora_r: int = 8,
     lora_alpha: int = 16,
@@ -61,7 +62,8 @@ def train(
         print(
             f"Training Alpaca-LoRA model with params:\n"
             f"base_model: {base_model}\n"
-            f"data_path: {data_path}\n"
+            f"train_dataset: {sw_train_dataset.name}\n"
+            f"eval_dataset: {sw_eval_dataset}\n"
             f"output_dir: {output_dir}\n"
             f"batch_size: {batch_size}\n"
             f"micro_batch_size: {micro_batch_size}\n"
@@ -183,11 +185,6 @@ def train(
     )
     model = get_peft_model(model, config)
 
-    if data_path.endswith(".json") or data_path.endswith(".jsonl"):
-        data = load_dataset("json", data_files=data_path)
-    else:
-        data = load_dataset(data_path)
-
     if resume_from_checkpoint:
         # Check the available weights and load them
         checkpoint_name = os.path.join(
@@ -210,19 +207,13 @@ def train(
 
     model.print_trainable_parameters()  # Be more transparent about the % of trainable params.
 
-    if val_set_size > 0:
-        train_val = data["train"].train_test_split(
-            test_size=val_set_size, shuffle=True, seed=42
-        )
-        train_data = (
-            train_val["train"].shuffle().map(generate_and_tokenize_prompt)
-        )
-        val_data = (
-            train_val["test"].shuffle().map(generate_and_tokenize_prompt)
-        )
+    if sw_eval_dataset:
+        train_dataset = swds2hgds(sw_train_dataset).shuffle().map(generate_and_tokenize_prompt)
+        eval_dataset = swds2hgds(sw_eval_dataset).shuffle().map(generate_and_tokenize_prompt)
     else:
-        train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
-        val_data = None
+        hgds = swds2hgds(sw_train_dataset).shuffle().map(generate_and_tokenize_prompt).train_test_split(test_size=val_set_size)
+        train_dataset = hgds["train"]
+        eval_dataset = hgds["test"]
 
     if not ddp and torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
@@ -231,8 +222,8 @@ def train(
 
     trainer = transformers.Trainer(
         model=model,
-        train_dataset=train_data,
-        eval_dataset=val_data,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
@@ -277,6 +268,13 @@ def train(
     print(
         "\n If there's a warning about missing keys above, please disregard :)"
     )
+
+def swds2hgds(swds) -> Any:
+    sw_ds = swds
+    def my_gen():
+        for item in sw_ds:
+            yield item.features
+    return Dataset.from_generator(my_gen)
 
 
 if __name__ == "__main__":
