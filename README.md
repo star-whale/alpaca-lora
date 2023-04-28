@@ -20,11 +20,11 @@ python build_swmp.py
 ## Finetune the model with dataset and gain a new verson
 
 ```bash
-swcli model run -u llama-7b-hf/version/lateset -d alpaca_data/version/lateset -h finetune
+swcli model run -u llama-7b-hf/version/latest -d test/version/latest -h swmp_handlers:fine_tune
 ```
 
 ## Serve an API for the finetuned version of model
 
 ```bash
-swcli model serve llama-7b-hf/version/lateset
+swcli model serve -u llama-7b-hf/version/latest
 ```
