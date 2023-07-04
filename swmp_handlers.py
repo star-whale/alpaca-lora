@@ -2,7 +2,7 @@ import os
 from finetune import train
 from generate import init_model, evaluate
 from transformers import LlamaForCausalLM, LlamaTokenizer
-from starwhale import evaluation, pass_context, Context, dataset
+from starwhale import evaluation, pass_context, Context, dataset, handler
 from starwhale.api import model, experiment
 from starwhale.api.service import api
 import gradio
@@ -46,6 +46,23 @@ def fine_tune() -> None:
 @api(gradio.Text(), gradio.Text())
 def online_eval(question: str) -> str:
     return ppl({"instruction": question})
+
+@handler(expose=7860)
+def chat():
+    import gradio as gr
+    with gr.Blocks() as demo:
+        chatbot = gr.Chatbot()
+        msg = gr.Textbox()
+        clear = gr.ClearButton([msg, chatbot])
+
+        def respond(message, chat_history):
+            response = ppl({"instruction": message})
+            chat_history.append((message, response))
+            return "", chat_history
+
+        msg.submit(respond, [msg, chatbot], [msg, chatbot])
+
+    demo.launch(server_name="0.0.0.0")
 
 
 if not os.path.exists(ROOTDIR/"models"):

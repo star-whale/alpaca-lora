@@ -34,7 +34,7 @@ def main(
     server_name: str = "0.0.0.0",  # Allows to listen on all interfaces by providing '0.
     share_gradio: bool = False,
 ):
-    init_model(load_8bit, base_model, lora_weights, prompt_template)
+    init_model(base_model, lora_weights, load_8bit, prompt_template)
     api_serve(server_name, share_gradio)
 
     # Old testing code follows.
@@ -113,6 +113,7 @@ def init_model(base_model, lora_weights,load_8bit=True, prompt_template=""):
             model.half()  # seems to fix bugs for some users.
 
         model.eval()
+        model.tie_weights()
         if torch.__version__ >= "2" and sys.platform != "win32":
             model = torch.compile(model)
 
